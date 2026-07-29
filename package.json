@@ -1,5 +1,5 @@
 {
-  "name": "xe-schet-local",
+  "name": "xe-schet",
   "version": "1.0.0",
   "description": "PWA для приблизительной оценки хлебных единиц по фото или описанию",
   "private": true,

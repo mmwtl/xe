@@ -2,7 +2,6 @@
 
 import {
   ChangeEvent,
-  DragEvent,
   FormEvent,
   useEffect,
   useRef,
@@ -17,7 +16,9 @@ import {
 } from "@/lib/history";
 import type { ApiError, MealAnalysis } from "@/lib/types";
 
+const MAX_PHOTOS = 3;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_TOTAL_FILE_BYTES = 14 * 1024 * 1024;
 const ALLOWED_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -26,11 +27,15 @@ const ALLOWED_TYPES = new Set([
   "image/heif",
 ]);
 
+type SelectedPhoto = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
+
 export function Analyzer() {
-  const [mode, setMode] = useState<AnalysisMode>("photo");
   const [description, setDescription] = useState("");
-  const [photo, setPhoto] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState("");
+  const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
   const [result, setResult] = useState<MealAnalysis | null>(null);
   const [error, setError] = useState("");
   const [history, setHistory] = useState<AnalysisHistoryEntry[]>([]);
@@ -38,12 +43,12 @@ export function Analyzer() {
   const [historyError, setHistoryError] = useState("");
   const [isHistoryLoading, setIsHistoryLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const previewUrlRef = useRef("");
+  const previewUrlsRef = useRef(new Set<string>());
 
   useEffect(() => {
     let isMounted = true;
+    const previewUrls = previewUrlsRef.current;
 
     getHistory()
       .then((entries) => {
@@ -62,131 +67,103 @@ export function Analyzer() {
 
     return () => {
       isMounted = false;
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      previewUrls.forEach((url) => URL.revokeObjectURL(url));
+      previewUrls.clear();
     };
   }, []);
 
-  const choosePhoto = (event: ChangeEvent<HTMLInputElement>) => {
-    const nextPhoto = event.target.files?.[0];
-    if (nextPhoto) acceptPhoto(nextPhoto);
+  const choosePhotos = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextPhotos = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (nextPhotos.length > 0) acceptPhotos(nextPhotos);
   };
 
-  const acceptPhoto = (nextPhoto: File) => {
+  const acceptPhotos = (nextPhotos: File[]) => {
     setError("");
     setResult(null);
-    if (!ALLOWED_TYPES.has(nextPhoto.type)) {
+
+    const existingKeys = new Set(
+      photos.map(({ file }) => `${file.name}:${file.size}:${file.lastModified}`),
+    );
+    const uniquePhotos = nextPhotos.filter(
+      (file) =>
+        !existingKeys.has(`${file.name}:${file.size}:${file.lastModified}`),
+    );
+
+    if (uniquePhotos.length === 0) {
+      setError("Эти фотографии уже добавлены.");
+      return;
+    }
+    if (photos.length + uniquePhotos.length > MAX_PHOTOS) {
+      setError(`Можно добавить не больше ${MAX_PHOTOS} фотографий.`);
+      return;
+    }
+    if (uniquePhotos.some((file) => !ALLOWED_TYPES.has(file.type))) {
       setError("Поддерживаются JPG, PNG, WebP, HEIC и HEIF.");
       return;
     }
-    if (nextPhoto.size > MAX_FILE_BYTES) {
-      setError("Файл больше 10 МБ. Выберите фотографию меньшего размера.");
+    if (uniquePhotos.some((file) => file.size > MAX_FILE_BYTES)) {
+      setError("Одна из фотографий больше 10 МБ.");
       return;
     }
-    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-    const nextPreviewUrl = URL.createObjectURL(nextPhoto);
-    previewUrlRef.current = nextPreviewUrl;
-    setPreviewUrl(nextPreviewUrl);
-    setPhoto(nextPhoto);
+
+    const totalBytes = [...photos.map(({ file }) => file), ...uniquePhotos].reduce(
+      (sum, file) => sum + file.size,
+      0,
+    );
+    if (totalBytes > MAX_TOTAL_FILE_BYTES) {
+      setError("Общий размер фотографий не должен превышать 14 МБ.");
+      return;
+    }
+
+    const selectedPhotos = uniquePhotos.map((file) => {
+      const previewUrl = URL.createObjectURL(file);
+      previewUrlsRef.current.add(previewUrl);
+      return {
+        id: `${file.name}:${file.size}:${file.lastModified}`,
+        file,
+        previewUrl,
+      };
+    });
+    setPhotos((currentPhotos) => [...currentPhotos, ...selectedPhotos]);
   };
 
-  const dropPhoto = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragging(false);
-    const nextPhoto = event.dataTransfer.files?.[0];
-    if (nextPhoto) acceptPhoto(nextPhoto);
-  };
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const removePhoto = (photoId: string) => {
+    const photo = photos.find(({ id }) => id === photoId);
+    if (photo) {
+      URL.revokeObjectURL(photo.previewUrl);
+      previewUrlsRef.current.delete(photo.previewUrl);
+    }
+    setPhotos((currentPhotos) =>
+      currentPhotos.filter(({ id }) => id !== photoId),
+    );
     setError("");
     setResult(null);
-
-    if (mode === "photo" && !photo) {
-      setError("Добавьте фотографию блюда.");
-      return;
-    }
-    if (mode === "text" && !description.trim()) {
-      setError("Опишите блюдо и примерный размер порции.");
-      return;
-    }
-
-    const submittedMode = mode;
-    const submittedDescription = description.trim();
-    const submittedPhoto = mode === "photo" ? photo : null;
-    setIsLoading(true);
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 90_000);
-
-    try {
-      const formData = new FormData();
-      formData.set("description", submittedDescription);
-      if (submittedPhoto) formData.set("photo", submittedPhoto);
-
-      const response = await fetch("/api/analyze", {
-        method: "POST",
-        body: formData,
-        signal: controller.signal,
-      });
-      const payload = (await response.json()) as MealAnalysis | ApiError;
-
-      if (!response.ok || "error" in payload) {
-        const responseError =
-          "error" in payload ? payload.error : "Не удалось обработать запрос.";
-        setError(responseError);
-        await addHistoryEntry({
-          mode: submittedMode,
-          description: submittedDescription,
-          photo: submittedPhoto,
-          error: responseError,
-        });
-        return;
-      }
-
-      setResult(payload);
-      await addHistoryEntry({
-        mode: submittedMode,
-        description: submittedDescription,
-        photo: submittedPhoto,
-        result: payload,
-      });
-    } catch (requestError) {
-      const responseError =
-        requestError instanceof DOMException && requestError.name === "AbortError"
-          ? "Gemini отвечает слишком долго. Повторите запрос."
-          : "Нет соединения с локальным сервером.";
-      setError(responseError);
-      await addHistoryEntry({
-        mode: submittedMode,
-        description: submittedDescription,
-        photo: submittedPhoto,
-        error: responseError,
-      });
-    } finally {
-      window.clearTimeout(timeout);
-      setIsLoading(false);
-    }
   };
 
   const addHistoryEntry = async ({
-    mode: entryMode,
+    mode,
     description: entryDescription,
-    photo: entryPhoto,
+    photos: entryPhotos,
     result: entryResult,
     error: entryError,
   }: {
     mode: AnalysisMode;
     description: string;
-    photo: File | null;
+    photos: File[];
     result?: MealAnalysis;
     error?: string;
   }) => {
     const entry: AnalysisHistoryEntry = {
       id: createHistoryId(),
       createdAt: new Date().toISOString(),
-      mode: entryMode,
+      mode,
       description: entryDescription,
-      ...(entryPhoto
-        ? { photo: entryPhoto, photoName: entryPhoto.name }
+      ...(entryPhotos.length > 0
+        ? {
+            photos: entryPhotos,
+            photoNames: entryPhotos.map((photo) => photo.name),
+          }
         : {}),
       ...(entryResult ? { result: entryResult } : {}),
       ...(entryError ? { error: entryError } : {}),
@@ -205,10 +182,72 @@ export function Analyzer() {
     setSelectedHistoryId(entry.id);
   };
 
-  const changeMode = (nextMode: AnalysisMode) => {
-    setMode(nextMode);
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError("");
     setResult(null);
+
+    const submittedDescription = description.trim();
+    const submittedPhotos = photos.map(({ file }) => file);
+    if (submittedPhotos.length === 0 && !submittedDescription) {
+      setError("Добавьте фотографии или опишите блюдо.");
+      return;
+    }
+
+    const submittedMode: AnalysisMode =
+      submittedPhotos.length > 0 ? "photo" : "text";
+    setIsLoading(true);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 90_000);
+
+    try {
+      const formData = new FormData();
+      formData.set("description", submittedDescription);
+      submittedPhotos.forEach((photo) => formData.append("photos", photo));
+
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+      const payload = (await response.json()) as MealAnalysis | ApiError;
+
+      if (!response.ok || "error" in payload) {
+        const responseError =
+          "error" in payload ? payload.error : "Не удалось обработать запрос.";
+        setError(responseError);
+        await addHistoryEntry({
+          mode: submittedMode,
+          description: submittedDescription,
+          photos: submittedPhotos,
+          error: responseError,
+        });
+        return;
+      }
+
+      setResult(payload);
+      await addHistoryEntry({
+        mode: submittedMode,
+        description: submittedDescription,
+        photos: submittedPhotos,
+        result: payload,
+      });
+    } catch (requestError) {
+      const responseError =
+        requestError instanceof DOMException && requestError.name === "AbortError"
+          ? "Gemini отвечает слишком долго. Повторите запрос."
+          : "Не удалось связаться с сервером.";
+      setError(responseError);
+      await addHistoryEntry({
+        mode: submittedMode,
+        description: submittedDescription,
+        photos: submittedPhotos,
+        error: responseError,
+      });
+    } finally {
+      window.clearTimeout(timeout);
+      setIsLoading(false);
+    }
   };
 
   const removeAllHistory = async () => {
@@ -237,116 +276,70 @@ export function Analyzer() {
         id="calculator"
         aria-label="Анализ блюда"
       >
-        <div className="card-toolbar">
-          <strong>Новый расчёт</strong>
-        </div>
-
-        <div className="mode-tabs" role="tablist" aria-label="Источник данных">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "photo"}
-            className={mode === "photo" ? "active" : ""}
-            onClick={() => changeMode("photo")}
-          >
-            <CameraIcon />
-            По фото
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "text"}
-            className={mode === "text" ? "active" : ""}
-            onClick={() => changeMode("text")}
-          >
-            <TextIcon />
-            По описанию
-          </button>
-        </div>
-
         <form onSubmit={submit}>
-          {mode === "photo" ? (
-            <div className="photo-section">
-              <input
-                ref={fileInputRef}
-                className="visually-hidden"
-                id="meal-photo"
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-                onChange={choosePhoto}
-              />
-              <div
-                className={`dropzone ${previewUrl ? "with-preview" : ""} ${
-                  isDragging ? "dragging" : ""
-                }`}
-                onDragEnter={(event) => {
-                  event.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragOver={(event) => event.preventDefault()}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={dropPhoto}
-              >
-                {previewUrl ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={previewUrl} alt="Выбранное блюдо" />
-                    <div className="preview-overlay">
-                      <span>{photo?.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                      >
-                        Заменить
-                      </button>
-                    </div>
-                  </>
-                ) : (
+          <div className="meal-input">
+            <label className="visually-hidden" htmlFor="meal-description">
+              Описание блюда
+            </label>
+            <textarea
+              id="meal-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Опишите блюдо или уточните состав"
+              rows={3}
+              maxLength={2_000}
+            />
+
+            <input
+              ref={fileInputRef}
+              className="visually-hidden"
+              id="meal-photos"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+              multiple
+              onChange={choosePhotos}
+            />
+            <div className="attachment-row">
+              {photos.map((photo, index) => (
+                <div className="photo-thumbnail" key={photo.id}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={photo.previewUrl}
+                    alt={`Фотография блюда ${index + 1}`}
+                  />
                   <button
-                    className="dropzone-button"
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
+                    aria-label={`Удалить фотографию ${index + 1}`}
+                    onClick={() => removePhoto(photo.id)}
                   >
-                    <span className="upload-icon" aria-hidden="true">
-                      <UploadIcon />
-                    </span>
-                    <strong>Добавьте фото тарелки</strong>
-                    <span>Нажмите или перетащите сюда · до 10 МБ</span>
-                    <small>JPG, PNG, WebP, HEIC</small>
+                    <RemoveIcon />
                   </button>
-                )}
-              </div>
-              <label className="field-label" htmlFor="photo-description">
-                Уточнение <span>необязательно</span>
-              </label>
-              <textarea
-                id="photo-description"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Например: каша на молоке без сахара, тарелка 24 см"
-                rows={2}
-                maxLength={2_000}
-              />
+                </div>
+              ))}
+              <button
+                className="attach-button"
+                type="button"
+                disabled={photos.length >= MAX_PHOTOS}
+                aria-label={
+                  photos.length >= MAX_PHOTOS
+                    ? "Максимум 3 фото"
+                    : photos.length === 0
+                      ? "Прикрепить фото"
+                      : "Добавить фото"
+                }
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <AttachmentIcon />
+                <span>
+                  {photos.length === 0
+                    ? "Прикрепить фото"
+                    : photos.length < MAX_PHOTOS
+                      ? "Добавить фото"
+                      : "3 / 3"}
+                </span>
+              </button>
             </div>
-          ) : (
-            <div className="text-section">
-              <label className="field-label" htmlFor="meal-description">
-                Что у вас на тарелке?
-              </label>
-              <textarea
-                id="meal-description"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Например: 200 г гречки, куриная котлета 90 г и салат без заправки"
-                rows={5}
-                maxLength={2_000}
-                autoFocus
-              />
-              <div className="examples">
-                <span>Чем точнее вес и состав, тем полезнее оценка.</span>
-              </div>
-            </div>
-          )}
+          </div>
 
           {error ? (
             <div className="error-message" role="alert">
@@ -498,15 +491,17 @@ function HistoryView({
 }
 
 function HistoryDetail({ entry }: { entry: AnalysisHistoryEntry }) {
-  const [photoUrl] = useState(() =>
-    entry.photo ? URL.createObjectURL(entry.photo) : "",
+  const [photoUrls] = useState(() =>
+    getHistoryPhotos(entry).map((photo) => URL.createObjectURL(photo)),
   );
+  const photoNames = entry.photoNames ??
+    (entry.photoName ? [entry.photoName] : []);
 
   useEffect(() => {
     return () => {
-      if (photoUrl) URL.revokeObjectURL(photoUrl);
+      photoUrls.forEach((photoUrl) => URL.revokeObjectURL(photoUrl));
     };
-  }, [photoUrl]);
+  }, [photoUrls]);
 
   return (
     <article className="history-detail">
@@ -517,17 +512,26 @@ function HistoryDetail({ entry }: { entry: AnalysisHistoryEntry }) {
             <strong>{formatHistoryDate(entry.createdAt, true)}</strong>
           </div>
           <span className="history-mode">
-            {entry.mode === "photo" ? "По фото" : "По описанию"}
+            {entry.mode === "photo" ? "С фото" : "По описанию"}
           </span>
         </div>
 
-        {photoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            className="history-photo"
-            src={photoUrl}
-            alt={entry.photoName ? `Блюдо: ${entry.photoName}` : "Блюдо из истории"}
-          />
+        {photoUrls.length > 0 ? (
+          <div className="history-photos">
+            {photoUrls.map((photoUrl, index) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={photoUrl}
+                className="history-photo"
+                src={photoUrl}
+                alt={
+                  photoNames[index]
+                    ? `Блюдо: ${photoNames[index]}`
+                    : `Фотография блюда ${index + 1}`
+                }
+              />
+            ))}
+          </div>
         ) : null}
 
         {entry.description ? (
@@ -642,16 +646,21 @@ function ResultView({ result }: { result: MealAnalysis }) {
   );
 }
 
-function formatNumber(value: number) {
-  return new Intl.NumberFormat("ru-RU", {
-    maximumFractionDigits: 1,
-  }).format(value);
+function getHistoryPhotos(entry: AnalysisHistoryEntry) {
+  if (entry.photos?.length) return entry.photos;
+  return entry.photo ? [entry.photo] : [];
 }
 
 function getHistoryTitle(entry: AnalysisHistoryEntry) {
   const description = entry.description.trim();
   if (description) return description;
-  return entry.photoName || "Фотография блюда";
+  return entry.photoNames?.[0] || entry.photoName || "Фотография блюда";
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("ru-RU", {
+    maximumFractionDigits: 1,
+  }).format(value);
 }
 
 function formatHistoryDate(value: string, includeYear = false) {
@@ -669,6 +678,24 @@ function createHistoryId() {
     `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function AttachmentIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M10.6 7.1 6 11.7a3 3 0 0 0 4.2 4.2l6.2-6.2a4.2 4.2 0 0 0-5.9-5.9L4.2 10a5.5 5.5 0 0 0 7.8 7.8l3.4-3.4" />
+      <path d="M15.7 14.2h3.8a1.5 1.5 0 0 1 1.5 1.5v3.8a1.5 1.5 0 0 1-1.5 1.5h-5a1.5 1.5 0 0 1-1.5-1.5v-2.6" />
+      <circle cx="17" cy="17.6" r="1.5" />
+    </svg>
+  );
+}
+
+function RemoveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m7 7 10 10M17 7 7 17" />
+    </svg>
+  );
+}
+
 function CameraIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -682,14 +709,6 @@ function TextIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M5 6.5h14M5 12h14M5 17.5h9" />
-    </svg>
-  );
-}
-
-function UploadIcon() {
-  return (
-    <svg viewBox="0 0 24 24">
-      <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14.5V19h14v-4.5" />
     </svg>
   );
 }

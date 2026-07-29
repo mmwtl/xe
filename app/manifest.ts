@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "ХЕ.СЧЁТ — калькулятор хлебных единиц",
     short_name: "ХЕ.СЧЁТ",
     description:
-      "Приблизительный расчёт ХЕ по фото или текстовому описанию через Gemini.",
+      "Приблизительный расчёт ХЕ по фотографиям или текстовому описанию через Gemini.",
     start_url: "/",
     display: "standalone",
     background_color: "#f4efe5",

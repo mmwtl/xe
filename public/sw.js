@@ -1,4 +1,4 @@
-const CACHE_NAME = "xe-schet-shell-v1";
+const CACHE_NAME = "xe-schet-shell-v2";
 const SHELL = [
   "/",
   "/manifest.webmanifest",
@@ -33,7 +33,11 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) {
+  if (
+    url.origin !== self.location.origin ||
+    url.pathname.startsWith("/api/") ||
+    url.pathname.startsWith("/_next/")
+  ) {
     return;
   }
 

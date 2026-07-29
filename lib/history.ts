@@ -7,6 +7,9 @@ export type AnalysisHistoryEntry = {
   createdAt: string;
   mode: AnalysisMode;
   description: string;
+  photos?: Blob[];
+  photoNames?: string[];
+  // Legacy fields from history entries created before multi-photo support.
   photo?: Blob;
   photoName?: string;
   result?: MealAnalysis;

@@ -25,8 +25,9 @@ export default function Home() {
             <em>на тарелке?</em>
           </h1>
           <p className="lead">
-            Добавьте фотографию или опишите блюдо. Gemini оценит продукты,
-            порции и углеводы, а приложение пересчитает результат в ХЕ.
+            Добавьте до трёх фотографий одного блюда или опишите его. Gemini
+            оценит продукты, порции и углеводы, а приложение пересчитает
+            результат в ХЕ.
           </p>
           <p className="medical-note">
             Оценка приблизительная. Не используйте результат как единственное
@@ -38,7 +39,7 @@ export default function Home() {
       </section>
 
       <footer className="app-footer">
-        <span>Работает локально · Gemini API</span>
+        <span>Gemini API · история хранится на устройстве</span>
         <span>PWA для Android и iOS</span>
       </footer>
     </main>

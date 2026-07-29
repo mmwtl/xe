@@ -6,6 +6,8 @@ import type { MealAnalysis } from "@/lib/types";
 export const runtime = "nodejs";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_TOTAL_FILE_BYTES = 14 * 1024 * 1024;
+const MAX_PHOTOS = 3;
 const DEFAULT_PRIMARY_MODEL = "gemini-3.6-flash";
 const DEFAULT_FALLBACK_MODELS = [
   "gemini-3.5-flash",
@@ -18,30 +20,57 @@ export async function POST(request: Request) {
     const description = String(formData.get("description") ?? "")
       .trim()
       .slice(0, 2_000);
-    const photoValue = formData.get("photo");
-    const photo =
-      photoValue instanceof File && photoValue.size > 0 ? photoValue : null;
+    const photos = formData
+      .getAll("photos")
+      .filter((value): value is File => value instanceof File && value.size > 0);
 
-    if (!photo && !description) {
+    if (photos.length === 0 && !description) {
       return NextResponse.json(
-        { error: "Добавьте фотографию или описание блюда.", code: "NO_INPUT" },
+        { error: "Добавьте фотографии или описание блюда.", code: "NO_INPUT" },
         { status: 400 },
       );
     }
 
-    if (photo && photo.size > MAX_FILE_BYTES) {
+    if (photos.length > MAX_PHOTOS) {
       return NextResponse.json(
-        { error: "Фото больше 10 МБ. Уменьшите размер файла.", code: "TOO_LARGE" },
+        {
+          error: `Можно добавить не больше ${MAX_PHOTOS} фотографий.`,
+          code: "TOO_MANY_PHOTOS",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (photos.some((photo) => photo.size > MAX_FILE_BYTES)) {
+      return NextResponse.json(
+        { error: "Одна из фотографий больше 10 МБ.", code: "TOO_LARGE" },
         { status: 413 },
       );
     }
 
-    const photoBytes = photo ? await photo.arrayBuffer() : null;
-    const photoMimeType = photoBytes
-      ? detectImageMimeType(new Uint8Array(photoBytes), photo?.type ?? "")
-      : null;
+    const totalPhotoBytes = photos.reduce((sum, photo) => sum + photo.size, 0);
+    if (totalPhotoBytes > MAX_TOTAL_FILE_BYTES) {
+      return NextResponse.json(
+        {
+          error: "Общий размер фотографий не должен превышать 14 МБ.",
+          code: "TOTAL_TOO_LARGE",
+        },
+        { status: 413 },
+      );
+    }
 
-    if (photo && !photoMimeType) {
+    const photoBuffers = await Promise.all(
+      photos.map((photo) => photo.arrayBuffer()),
+    );
+    const images = photoBuffers.map((bytes, index) => ({
+      bytes,
+      mimeType: detectImageMimeType(
+        new Uint8Array(bytes),
+        photos[index]?.type ?? "",
+      ),
+    }));
+
+    if (images.some(({ mimeType }) => !mimeType)) {
       return NextResponse.json(
         {
           error: "Поддерживаются JPG, PNG, WebP, HEIC и HEIF.",
@@ -73,12 +102,10 @@ export async function POST(request: Request) {
       apiKey,
       models,
       description,
-      image: photoBytes && photoMimeType
-        ? {
-            bytes: photoBytes,
-            mimeType: photoMimeType,
-          }
-        : undefined,
+      images: images.map(({ bytes, mimeType }) => ({
+        bytes,
+        mimeType: mimeType as string,
+      })),
     });
 
     return NextResponse.json(result, {

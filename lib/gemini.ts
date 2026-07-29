@@ -74,26 +74,25 @@ export async function analyzeMeal({
   apiKey,
   models,
   description,
-  image,
+  images = [],
 }: {
   apiKey: string;
   models: readonly string[];
   description: string;
-  image?: { bytes: ArrayBuffer; mimeType: string };
+  images?: readonly { bytes: ArrayBuffer; mimeType: string }[];
 }): Promise<MealAnalysis> {
   const client = new GoogleGenAI({ apiKey });
-  const prompt = buildPrompt(description, Boolean(image));
-  const input = image
-    ? [
-        {
-          type: "image" as const,
-          mime_type: image.mimeType,
-          data: Buffer.from(image.bytes).toString("base64"),
-          resolution: "high" as const,
-        },
-        { type: "text" as const, text: prompt },
-      ]
-    : prompt;
+  const prompt = buildPrompt(description, images.length);
+  const imageInputs = images.map((image) => ({
+    type: "image" as const,
+    mime_type: image.mimeType,
+    data: Buffer.from(image.bytes).toString("base64"),
+    resolution: "high" as const,
+  }));
+  const input =
+    imageInputs.length > 0
+      ? [...imageInputs, { type: "text" as const, text: prompt }]
+      : prompt;
 
   try {
     return await withRateLimitFallback({
@@ -174,14 +173,16 @@ export function isRateLimitError(error: unknown): boolean {
   return /quota|rate.?limit|429|resource.?exhausted/i.test(message);
 }
 
-function buildPrompt(description: string, hasImage: boolean): string {
+function buildPrompt(description: string, imageCount: number): string {
   const inputDescription = description.trim()
     ? `Описание пользователя: «${description.trim()}».`
     : "Пользователь не добавил текстовое описание.";
 
   return [
     "Ты анализируешь еду для приблизительного подсчёта углеводов и хлебных единиц (ХЕ).",
-    hasImage
+    imageCount > 1
+      ? `Все ${imageCount} фотографии показывают одно и то же блюдо с разных ракурсов. Используй их совместно и не считай повторно продукты, видимые на нескольких фотографиях.`
+      : imageCount === 1
       ? "Определи все видимые продукты и блюда на фотографии."
       : "Определи продукты и блюда только по текстовому описанию.",
     inputDescription,
