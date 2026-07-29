@@ -264,188 +264,24 @@ h1 em::after {
   transform: rotate(8deg);
 }
 
-.mode-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  padding: 6px;
-  border-radius: 17px;
-  background: #ece8df;
-}
-
-.mode-tabs button {
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 0;
-  border-radius: 12px;
-  background: transparent;
-  color: #737671;
-  font-size: 12px;
-  font-weight: 850;
-  cursor: pointer;
-  transition:
-    color 160ms ease,
-    background 160ms ease,
-    box-shadow 160ms ease;
-}
-
-.mode-tabs button svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.mode-tabs button.active {
-  background: var(--paper);
-  color: var(--ink);
-  box-shadow: 0 3px 10px rgba(23, 33, 60, 0.1);
-}
-
 .analyzer-card form {
-  padding: 24px 10px 18px;
+  padding: 10px 10px 18px;
 }
 
-.photo-section,
-.text-section {
+.meal-input {
   display: grid;
+  gap: 12px;
 }
 
-.dropzone {
-  position: relative;
-  height: 228px;
-  overflow: hidden;
-  margin-bottom: 20px;
-  border: 1px dashed rgba(23, 33, 60, 0.34);
-  border-radius: 17px;
-  background: #f9f6ef;
-  transition:
-    border-color 160ms ease,
-    background 160ms ease,
-    transform 160ms ease;
+.meal-input textarea {
+  min-height: 126px;
 }
 
-.dropzone.dragging {
-  border-color: var(--ink);
-  background: rgba(199, 243, 106, 0.18);
-  transform: scale(0.995);
-}
-
-.dropzone-button {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.upload-icon {
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  margin-bottom: 13px;
-  border-radius: 50%;
-  background: var(--lime);
-}
-
-.upload-icon svg {
-  width: 25px;
-  height: 25px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.dropzone-button strong {
-  margin-bottom: 7px;
-  font-size: 14px;
-}
-
-.dropzone-button > span:not(.upload-icon) {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.dropzone-button small {
-  margin-top: 7px;
-  color: #9a9d98;
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.dropzone.with-preview {
-  border-style: solid;
-}
-
-.dropzone img {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
-}
-
-.preview-overlay {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  left: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 9px 10px 9px 13px;
-  border-radius: 11px;
-  background: rgba(255, 253, 248, 0.94);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 5px 20px rgba(23, 33, 60, 0.2);
-}
-
-.preview-overlay > span {
+.attachment-row {
   min-width: 0;
-  overflow: hidden;
-  font-size: 10px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.preview-overlay button {
-  flex: 0 0 auto;
-  min-height: 30px;
-  padding: 0 11px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: white;
-  font-size: 10px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.field-label {
-  margin-bottom: 9px;
-  font-size: 12px;
-  font-weight: 850;
-}
-
-.field-label span {
-  margin-left: 4px;
-  color: var(--muted);
-  font-size: 9px;
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 textarea {
@@ -473,10 +309,102 @@ textarea:focus {
   box-shadow: 0 0 0 4px rgba(199, 243, 106, 0.42);
 }
 
-.examples {
-  margin-top: 10px;
-  color: var(--muted);
-  font-size: 10px;
+.photo-thumbnail {
+  position: relative;
+  flex: 0 0 64px;
+  height: 64px;
+  border: 1px solid var(--ink);
+  border-radius: 12px;
+  background: #ece8df;
+}
+
+.photo-thumbnail img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.photo-thumbnail button {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+  background: var(--ink);
+  color: white;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    background 160ms ease;
+}
+
+.photo-thumbnail button:hover {
+  background: var(--coral);
+  transform: scale(1.06);
+}
+
+.photo-thumbnail button svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.attach-button {
+  min-width: 0;
+  min-height: 64px;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 16px;
+  border: 1px solid var(--ink);
+  border-radius: 12px;
+  background: var(--lime);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease;
+}
+
+.attach-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 0 var(--ink);
+}
+
+.attach-button:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.attach-button svg {
+  width: 31px;
+  height: 31px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.attach-button span {
+  min-width: 0;
+  line-height: 1.15;
 }
 
 .error-message {
@@ -912,16 +840,51 @@ textarea:focus {
     display: none;
   }
 
-  .mode-tabs button {
-    min-height: 45px;
-  }
-
   .analyzer-card form {
-    padding: 20px 4px 16px;
+    padding: 4px 4px 14px;
   }
 
-  .dropzone {
-    height: 210px;
+  .meal-input {
+    gap: 10px;
+  }
+
+  .meal-input textarea {
+    min-height: 112px;
+  }
+
+  .attachment-row {
+    gap: 7px;
+  }
+
+  .photo-thumbnail {
+    flex-basis: 54px;
+    height: 54px;
+    border-radius: 10px;
+  }
+
+  .photo-thumbnail button {
+    top: -6px;
+    right: -6px;
+    width: 23px;
+    height: 23px;
+  }
+
+  .attach-button {
+    min-height: 54px;
+    gap: 7px;
+    padding: 0 9px;
+    border-radius: 10px;
+    font-size: 11px;
+  }
+
+  .attach-button svg {
+    width: 29px;
+    height: 29px;
+  }
+
+  .empty-result {
+    min-height: 90px;
+    padding-top: 13px;
   }
 
   .result,

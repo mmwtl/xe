@@ -25,18 +25,19 @@ export default function Home() {
             <em>на тарелке?</em>
           </h1>
           <p className="lead">
-            Добавьте фотографию или опишите блюдо. Gemini оценит продукты,
-            порции и углеводы, а приложение пересчитает результат в ХЕ.
+            Добавьте до трёх фотографий одного блюда или опишите его. Gemini
+            оценит продукты, порции и углеводы, а приложение пересчитает
+            результат в ХЕ.
           </p>
           <div className="privacy-note">
             <span className="privacy-icon" aria-hidden="true">
               ●
             </span>
             <div>
-              <strong>Локальный интерфейс</strong>
+              <strong>Без регистрации</strong>
               <p>
-                Фото отправляется только в Gemini API после нажатия кнопки. В
-                приложении нет базы данных и регистрации.
+                Фото отправляются в Gemini только для анализа и не сохраняются
+                в приложении.
               </p>
             </div>
           </div>
@@ -50,7 +51,7 @@ export default function Home() {
       </section>
 
       <footer className="app-footer">
-        <span>Работает локально · Gemini API</span>
+        <span>Gemini API · фото не сохраняются</span>
         <span>PWA для Android и iOS</span>
       </footer>
     </main>

@@ -2,7 +2,6 @@
 
 import {
   ChangeEvent,
-  DragEvent,
   FormEvent,
   useEffect,
   useRef,
@@ -10,9 +9,9 @@ import {
 } from "react";
 import type { ApiError, MealAnalysis } from "@/lib/types";
 
-type Mode = "photo" | "text";
-
+const MAX_PHOTOS = 3;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_TOTAL_FILE_BYTES = 14 * 1024 * 1024;
 const ALLOWED_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -21,52 +20,96 @@ const ALLOWED_TYPES = new Set([
   "image/heif",
 ]);
 
+type SelectedPhoto = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
+
 export function Analyzer() {
-  const [mode, setMode] = useState<Mode>("photo");
   const [description, setDescription] = useState("");
-  const [photo, setPhoto] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState("");
+  const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
   const [result, setResult] = useState<MealAnalysis | null>(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const previewUrlRef = useRef("");
+  const previewUrlsRef = useRef(new Set<string>());
 
   useEffect(() => {
+    const previewUrls = previewUrlsRef.current;
     return () => {
-      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+      previewUrls.forEach((url) => URL.revokeObjectURL(url));
+      previewUrls.clear();
     };
   }, []);
 
-  const choosePhoto = (event: ChangeEvent<HTMLInputElement>) => {
-    const nextPhoto = event.target.files?.[0];
-    if (nextPhoto) acceptPhoto(nextPhoto);
+  const choosePhotos = (event: ChangeEvent<HTMLInputElement>) => {
+    const nextPhotos = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (nextPhotos.length > 0) acceptPhotos(nextPhotos);
   };
 
-  const acceptPhoto = (nextPhoto: File) => {
+  const acceptPhotos = (nextPhotos: File[]) => {
     setError("");
     setResult(null);
-    if (!ALLOWED_TYPES.has(nextPhoto.type)) {
+
+    const existingKeys = new Set(
+      photos.map(({ file }) => `${file.name}:${file.size}:${file.lastModified}`),
+    );
+    const uniquePhotos = nextPhotos.filter(
+      (file) =>
+        !existingKeys.has(`${file.name}:${file.size}:${file.lastModified}`),
+    );
+
+    if (uniquePhotos.length === 0) {
+      setError("Эти фотографии уже добавлены.");
+      return;
+    }
+    if (photos.length + uniquePhotos.length > MAX_PHOTOS) {
+      setError(`Можно добавить не больше ${MAX_PHOTOS} фотографий.`);
+      return;
+    }
+    if (uniquePhotos.some((file) => !ALLOWED_TYPES.has(file.type))) {
       setError("Поддерживаются JPG, PNG, WebP, HEIC и HEIF.");
       return;
     }
-    if (nextPhoto.size > MAX_FILE_BYTES) {
-      setError("Файл больше 10 МБ. Выберите фотографию меньшего размера.");
+    if (uniquePhotos.some((file) => file.size > MAX_FILE_BYTES)) {
+      setError("Одна из фотографий больше 10 МБ.");
       return;
     }
-    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-    const nextPreviewUrl = URL.createObjectURL(nextPhoto);
-    previewUrlRef.current = nextPreviewUrl;
-    setPreviewUrl(nextPreviewUrl);
-    setPhoto(nextPhoto);
+
+    const totalBytes = [...photos.map(({ file }) => file), ...uniquePhotos].reduce(
+      (sum, file) => sum + file.size,
+      0,
+    );
+    if (totalBytes > MAX_TOTAL_FILE_BYTES) {
+      setError("Общий размер фотографий не должен превышать 14 МБ.");
+      return;
+    }
+
+    const selectedPhotos = uniquePhotos.map((file) => {
+      const previewUrl = URL.createObjectURL(file);
+      previewUrlsRef.current.add(previewUrl);
+      return {
+        id: `${file.name}:${file.size}:${file.lastModified}`,
+        file,
+        previewUrl,
+      };
+    });
+    setPhotos((currentPhotos) => [...currentPhotos, ...selectedPhotos]);
   };
 
-  const dropPhoto = (event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragging(false);
-    const nextPhoto = event.dataTransfer.files?.[0];
-    if (nextPhoto) acceptPhoto(nextPhoto);
+  const removePhoto = (photoId: string) => {
+    const photo = photos.find(({ id }) => id === photoId);
+    if (photo) {
+      URL.revokeObjectURL(photo.previewUrl);
+      previewUrlsRef.current.delete(photo.previewUrl);
+    }
+    setPhotos((currentPhotos) =>
+      currentPhotos.filter(({ id }) => id !== photoId),
+    );
+    setError("");
+    setResult(null);
   };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -74,12 +117,8 @@ export function Analyzer() {
     setError("");
     setResult(null);
 
-    if (mode === "photo" && !photo) {
-      setError("Добавьте фотографию блюда.");
-      return;
-    }
-    if (mode === "text" && !description.trim()) {
-      setError("Опишите блюдо и примерный размер порции.");
+    if (photos.length === 0 && !description.trim()) {
+      setError("Добавьте фотографии или опишите блюдо.");
       return;
     }
 
@@ -90,7 +129,7 @@ export function Analyzer() {
     try {
       const formData = new FormData();
       formData.set("description", description.trim());
-      if (mode === "photo" && photo) formData.set("photo", photo);
+      photos.forEach(({ file }) => formData.append("photos", file));
 
       const response = await fetch("/api/analyze", {
         method: "POST",
@@ -113,7 +152,7 @@ export function Analyzer() {
       setError(
         requestError instanceof DOMException && requestError.name === "AbortError"
           ? "Gemini отвечает слишком долго. Повторите запрос."
-          : "Нет соединения с локальным сервером.",
+          : "Не удалось связаться с сервером.",
       );
     } finally {
       window.clearTimeout(timeout);
@@ -121,120 +160,72 @@ export function Analyzer() {
     }
   };
 
-  const changeMode = (nextMode: Mode) => {
-    setMode(nextMode);
-    setError("");
-    setResult(null);
-  };
-
   return (
     <section className="analyzer-card" aria-label="Анализ блюда">
-      <div className="mode-tabs" role="tablist" aria-label="Источник данных">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === "photo"}
-          className={mode === "photo" ? "active" : ""}
-          onClick={() => changeMode("photo")}
-        >
-          <CameraIcon />
-          По фото
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === "text"}
-          className={mode === "text" ? "active" : ""}
-          onClick={() => changeMode("text")}
-        >
-          <TextIcon />
-          По описанию
-        </button>
-      </div>
-
       <form onSubmit={submit}>
-        {mode === "photo" ? (
-          <div className="photo-section">
-            <input
-              ref={fileInputRef}
-              className="visually-hidden"
-              id="meal-photo"
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-              onChange={choosePhoto}
-            />
-            <div
-              className={`dropzone ${previewUrl ? "with-preview" : ""} ${
-                isDragging ? "dragging" : ""
-              }`}
-              onDragEnter={(event) => {
-                event.preventDefault();
-                setIsDragging(true);
-              }}
-              onDragOver={(event) => event.preventDefault()}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={dropPhoto}
-            >
-              {previewUrl ? (
-                <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={previewUrl} alt="Выбранное блюдо" />
-                  <div className="preview-overlay">
-                    <span>{photo?.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      Заменить
-                    </button>
-                  </div>
-                </>
-              ) : (
+        <div className="meal-input">
+          <label className="visually-hidden" htmlFor="meal-description">
+            Описание блюда
+          </label>
+          <textarea
+            id="meal-description"
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="Опишите блюдо или уточните состав"
+            rows={3}
+            maxLength={2_000}
+          />
+
+          <input
+            ref={fileInputRef}
+            className="visually-hidden"
+            id="meal-photos"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+            multiple
+            onChange={choosePhotos}
+          />
+          <div className="attachment-row">
+            {photos.map((photo, index) => (
+              <div className="photo-thumbnail" key={photo.id}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photo.previewUrl}
+                  alt={`Фотография блюда ${index + 1}`}
+                />
                 <button
-                  className="dropzone-button"
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  aria-label={`Удалить фотографию ${index + 1}`}
+                  onClick={() => removePhoto(photo.id)}
                 >
-                  <span className="upload-icon" aria-hidden="true">
-                    <UploadIcon />
-                  </span>
-                  <strong>Добавьте фото тарелки</strong>
-                  <span>Нажмите или перетащите сюда · до 10 МБ</span>
-                  <small>JPG, PNG, WebP, HEIC</small>
+                  <RemoveIcon />
                 </button>
-              )}
-            </div>
-            <label className="field-label" htmlFor="photo-description">
-              Уточнение <span>необязательно</span>
-            </label>
-            <textarea
-              id="photo-description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Например: каша на молоке без сахара, тарелка 24 см"
-              rows={2}
-              maxLength={2_000}
-            />
+              </div>
+            ))}
+            <button
+              className="attach-button"
+              type="button"
+              disabled={photos.length >= MAX_PHOTOS}
+              aria-label={
+                photos.length >= MAX_PHOTOS
+                  ? "Максимум 3 фото"
+                  : photos.length === 0
+                    ? "Прикрепить фото"
+                    : "Добавить фото"
+              }
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <AttachmentIcon />
+              <span>
+                {photos.length === 0
+                  ? "Прикрепить фото"
+                  : photos.length < MAX_PHOTOS
+                    ? "Добавить фото"
+                    : "3 / 3"}
+              </span>
+            </button>
           </div>
-        ) : (
-          <div className="text-section">
-            <label className="field-label" htmlFor="meal-description">
-              Что у вас на тарелке?
-            </label>
-            <textarea
-              id="meal-description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Например: 200 г гречки, куриная котлета 90 г и салат без заправки"
-              rows={5}
-              maxLength={2_000}
-              autoFocus
-            />
-            <div className="examples">
-              <span>Чем точнее вес и состав, тем полезнее оценка.</span>
-            </div>
-          </div>
-        )}
+        </div>
 
         {error ? (
           <div className="error-message" role="alert">
@@ -358,27 +349,20 @@ function formatNumber(value: number) {
   }).format(value);
 }
 
-function CameraIcon() {
+function AttachmentIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8.5 5.5 10 3.7h4l1.5 1.8H19A2.5 2.5 0 0 1 21.5 8v9A2.5 2.5 0 0 1 19 19.5H5A2.5 2.5 0 0 1 2.5 17V8A2.5 2.5 0 0 1 5 5.5h3.5Z" />
-      <circle cx="12" cy="12.5" r="4" />
+      <path d="M10.6 7.1 6 11.7a3 3 0 0 0 4.2 4.2l6.2-6.2a4.2 4.2 0 0 0-5.9-5.9L4.2 10a5.5 5.5 0 0 0 7.8 7.8l3.4-3.4" />
+      <path d="M15.7 14.2h3.8a1.5 1.5 0 0 1 1.5 1.5v3.8a1.5 1.5 0 0 1-1.5 1.5h-5a1.5 1.5 0 0 1-1.5-1.5v-2.6" />
+      <circle cx="17" cy="17.6" r="1.5" />
     </svg>
   );
 }
 
-function TextIcon() {
+function RemoveIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M5 6.5h14M5 12h14M5 17.5h9" />
-    </svg>
-  );
-}
-
-function UploadIcon() {
-  return (
-    <svg viewBox="0 0 24 24">
-      <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14.5V19h14v-4.5" />
+      <path d="m7 7 10 10M17 7 7 17" />
     </svg>
   );
 }

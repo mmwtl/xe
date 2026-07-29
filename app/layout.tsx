@@ -4,9 +4,9 @@ import { PwaRegister } from "./components/pwa-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ХЕ.СЧЁТ — локальный калькулятор",
+  title: "ХЕ.СЧЁТ — калькулятор хлебных единиц",
   description:
-    "Приблизительный расчёт хлебных единиц по фото или описанию с помощью Gemini.",
+    "Приблизительный расчёт хлебных единиц по фотографиям или описанию с помощью Gemini.",
   applicationName: "ХЕ.СЧЁТ",
   appleWebApp: {
     capable: true,
