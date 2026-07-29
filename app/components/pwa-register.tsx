@@ -6,23 +6,42 @@ export function PwaRegister() {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
-    if (process.env.NODE_ENV !== "production") {
-      navigator.serviceWorker
-        .getRegistrations()
-        .then((registrations) => {
-          registrations.forEach((registration) => {
-            void registration.unregister();
-          });
-        })
-        .catch(() => {
-          // Development remains usable if old registrations cannot be removed.
-        });
+    if (process.env.NODE_ENV === "production") {
+      navigator.serviceWorker.register("/sw.js").catch(() => {
+        // The application remains usable without offline shell caching.
+      });
       return;
     }
 
-    navigator.serviceWorker.register("/sw.js").catch(() => {
-      // The application remains usable without offline shell caching.
-    });
+    const wasControlled = Boolean(navigator.serviceWorker.controller);
+    Promise.all([
+      navigator.serviceWorker.getRegistrations().then((registrations) =>
+        Promise.all(
+          registrations
+            .filter((registration) =>
+              registration.active?.scriptURL.endsWith("/sw.js"),
+            )
+            .map((registration) => registration.unregister()),
+        ),
+      ),
+      "caches" in window
+        ? caches
+            .keys()
+            .then((keys) =>
+              Promise.all(
+                keys
+                  .filter((key) => key.startsWith("xe-schet-shell-"))
+                  .map((key) => caches.delete(key)),
+              ),
+            )
+        : Promise.resolve([]),
+    ])
+      .then(() => {
+        if (wasControlled) window.location.reload();
+      })
+      .catch(() => {
+        // Development still works if browser storage cannot be cleaned.
+      });
   }, []);
 
   return null;

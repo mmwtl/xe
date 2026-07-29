@@ -29,18 +29,6 @@ export default function Home() {
             оценит продукты, порции и углеводы, а приложение пересчитает
             результат в ХЕ.
           </p>
-          <div className="privacy-note">
-            <span className="privacy-icon" aria-hidden="true">
-              ●
-            </span>
-            <div>
-              <strong>Без регистрации</strong>
-              <p>
-                Фото отправляются в Gemini только для анализа и не сохраняются
-                в приложении.
-              </p>
-            </div>
-          </div>
           <p className="medical-note">
             Оценка приблизительная. Не используйте результат как единственное
             основание для расчёта дозировки инсулина.
@@ -51,7 +39,7 @@ export default function Home() {
       </section>
 
       <footer className="app-footer">
-        <span>Gemini API · фото не сохраняются</span>
+        <span>Gemini API · история хранится на устройстве</span>
         <span>PWA для Android и iOS</span>
       </footer>
     </main>
