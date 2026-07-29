@@ -278,6 +278,14 @@ h1 em::after {
   min-width: 0;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.attachment-actions {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -359,7 +367,6 @@ textarea:focus {
 .attach-button {
   min-width: 0;
   min-height: 64px;
-  flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -386,6 +393,10 @@ textarea:focus {
 .attach-button:disabled {
   cursor: default;
   opacity: 0.72;
+}
+
+.gallery-button {
+  background: #faf7f0;
 }
 
 .attach-button svg {
@@ -1187,6 +1198,10 @@ textarea:focus {
   }
 
   .attachment-row {
+    gap: 7px;
+  }
+
+  .attachment-actions {
     gap: 7px;
   }
 

@@ -44,6 +44,7 @@ export function Analyzer() {
   const [isHistoryLoading, setIsHistoryLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const previewUrlsRef = useRef(new Set<string>());
 
   useEffect(() => {
@@ -291,6 +292,15 @@ export function Analyzer() {
             />
 
             <input
+              ref={cameraInputRef}
+              className="visually-hidden"
+              id="meal-camera"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={choosePhotos}
+            />
+            <input
               ref={fileInputRef}
               className="visually-hidden"
               id="meal-photos"
@@ -299,43 +309,59 @@ export function Analyzer() {
               multiple
               onChange={choosePhotos}
             />
-            <div className="attachment-row">
-              {photos.map((photo, index) => (
-                <div className="photo-thumbnail" key={photo.id}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photo.previewUrl}
-                    alt={`Фотография блюда ${index + 1}`}
-                  />
-                  <button
-                    type="button"
-                    aria-label={`Удалить фотографию ${index + 1}`}
-                    onClick={() => removePhoto(photo.id)}
-                  >
-                    <RemoveIcon />
-                  </button>
-                </div>
-              ))}
+            {photos.length > 0 ? (
+              <div className="attachment-row">
+                {photos.map((photo, index) => (
+                  <div className="photo-thumbnail" key={photo.id}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={photo.previewUrl}
+                      alt={`Фотография блюда ${index + 1}`}
+                    />
+                    <button
+                      type="button"
+                      aria-label={`Удалить фотографию ${index + 1}`}
+                      onClick={() => removePhoto(photo.id)}
+                    >
+                      <RemoveIcon />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <div className="attachment-actions">
               <button
-                className="attach-button"
+                className="attach-button camera-button"
+                type="button"
+                disabled={photos.length >= MAX_PHOTOS}
+                aria-label={
+                  photos.length >= MAX_PHOTOS
+                    ? "Максимум 3 фото"
+                    : "Сфотографировать блюдо"
+                }
+                onClick={() => cameraInputRef.current?.click()}
+              >
+                <CameraIcon />
+                <span>
+                  {photos.length < MAX_PHOTOS ? "Снять фото" : "3 / 3"}
+                </span>
+              </button>
+              <button
+                className="attach-button gallery-button"
                 type="button"
                 disabled={photos.length >= MAX_PHOTOS}
                 aria-label={
                   photos.length >= MAX_PHOTOS
                     ? "Максимум 3 фото"
                     : photos.length === 0
-                      ? "Прикрепить фото"
-                      : "Добавить фото"
+                      ? "Выбрать готовые фото"
+                      : "Добавить готовые фото"
                 }
                 onClick={() => fileInputRef.current?.click()}
               >
                 <AttachmentIcon />
                 <span>
-                  {photos.length === 0
-                    ? "Прикрепить фото"
-                    : photos.length < MAX_PHOTOS
-                      ? "Добавить фото"
-                      : "3 / 3"}
+                  {photos.length < MAX_PHOTOS ? "Выбрать фото" : "3 / 3"}
                 </span>
               </button>
             </div>
