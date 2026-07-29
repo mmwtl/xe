@@ -1,0 +1,38 @@
+{
+  "name": "xe-schet-local",
+  "version": "1.0.0",
+  "description": "PWA для приблизительной оценки хлебных единиц по фото или описанию",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "dev:mobile": "next dev --hostname 0.0.0.0",
+    "dev:https": "next dev --experimental-https --hostname 0.0.0.0",
+    "build": "next build",
+    "start": "next start",
+    "start:mobile": "next start --hostname 0.0.0.0",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run lint && npm run typecheck"
+  },
+  "dependencies": {
+    "@google/genai": "2.13.0",
+    "next": "16.2.12",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.2.12",
+    "typescript": "5.9.3"
+  },
+  "overrides": {
+    "postcss": "8.5.24",
+    "sharp": "0.35.3"
+  }
+}

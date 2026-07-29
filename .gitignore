@@ -1,0 +1,28 @@
+# Dependencies
+/node_modules/
+
+# Next.js build output
+/.next/
+/out/
+/build/
+
+# Test and compiler output
+/coverage/
+*.tsbuildinfo
+
+# Local environment files (the documented template is safe to commit)
+.env*
+!.env.example
+
+# Deployment providers
+/.vercel/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+
+# Logs and local certificates
+*.log
+*.pem
+*.key
