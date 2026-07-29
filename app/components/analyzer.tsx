@@ -8,9 +8,14 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  clearHistory,
+  getHistory,
+  saveHistoryEntry,
+  type AnalysisHistoryEntry,
+  type AnalysisMode,
+} from "@/lib/history";
 import type { ApiError, MealAnalysis } from "@/lib/types";
-
-type Mode = "photo" | "text";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_TYPES = new Set([
@@ -22,19 +27,41 @@ const ALLOWED_TYPES = new Set([
 ]);
 
 export function Analyzer() {
-  const [mode, setMode] = useState<Mode>("photo");
+  const [mode, setMode] = useState<AnalysisMode>("photo");
   const [description, setDescription] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [result, setResult] = useState<MealAnalysis | null>(null);
   const [error, setError] = useState("");
+  const [history, setHistory] = useState<AnalysisHistoryEntry[]>([]);
+  const [selectedHistoryId, setSelectedHistoryId] = useState("");
+  const [historyError, setHistoryError] = useState("");
+  const [isHistoryLoading, setIsHistoryLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewUrlRef = useRef("");
 
   useEffect(() => {
+    let isMounted = true;
+
+    getHistory()
+      .then((entries) => {
+        if (!isMounted) return;
+        setHistory(entries);
+        setSelectedHistoryId(entries[0]?.id ?? "");
+      })
+      .catch(() => {
+        if (isMounted) {
+          setHistoryError("Не удалось открыть локальную историю.");
+        }
+      })
+      .finally(() => {
+        if (isMounted) setIsHistoryLoading(false);
+      });
+
     return () => {
+      isMounted = false;
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     };
   }, []);
@@ -83,14 +110,17 @@ export function Analyzer() {
       return;
     }
 
+    const submittedMode = mode;
+    const submittedDescription = description.trim();
+    const submittedPhoto = mode === "photo" ? photo : null;
     setIsLoading(true);
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 90_000);
 
     try {
       const formData = new FormData();
-      formData.set("description", description.trim());
-      if (mode === "photo" && photo) formData.set("photo", photo);
+      formData.set("description", submittedDescription);
+      if (submittedPhoto) formData.set("photo", submittedPhoto);
 
       const response = await fetch("/api/analyze", {
         method: "POST",
@@ -100,170 +130,430 @@ export function Analyzer() {
       const payload = (await response.json()) as MealAnalysis | ApiError;
 
       if (!response.ok || "error" in payload) {
-        setError(
-          "error" in payload
-            ? payload.error
-            : "Не удалось обработать запрос.",
-        );
+        const responseError =
+          "error" in payload ? payload.error : "Не удалось обработать запрос.";
+        setError(responseError);
+        await addHistoryEntry({
+          mode: submittedMode,
+          description: submittedDescription,
+          photo: submittedPhoto,
+          error: responseError,
+        });
         return;
       }
 
       setResult(payload);
+      await addHistoryEntry({
+        mode: submittedMode,
+        description: submittedDescription,
+        photo: submittedPhoto,
+        result: payload,
+      });
     } catch (requestError) {
-      setError(
+      const responseError =
         requestError instanceof DOMException && requestError.name === "AbortError"
           ? "Gemini отвечает слишком долго. Повторите запрос."
-          : "Нет соединения с локальным сервером.",
-      );
+          : "Нет соединения с локальным сервером.";
+      setError(responseError);
+      await addHistoryEntry({
+        mode: submittedMode,
+        description: submittedDescription,
+        photo: submittedPhoto,
+        error: responseError,
+      });
     } finally {
       window.clearTimeout(timeout);
       setIsLoading(false);
     }
   };
 
-  const changeMode = (nextMode: Mode) => {
+  const addHistoryEntry = async ({
+    mode: entryMode,
+    description: entryDescription,
+    photo: entryPhoto,
+    result: entryResult,
+    error: entryError,
+  }: {
+    mode: AnalysisMode;
+    description: string;
+    photo: File | null;
+    result?: MealAnalysis;
+    error?: string;
+  }) => {
+    const entry: AnalysisHistoryEntry = {
+      id: createHistoryId(),
+      createdAt: new Date().toISOString(),
+      mode: entryMode,
+      description: entryDescription,
+      ...(entryPhoto
+        ? { photo: entryPhoto, photoName: entryPhoto.name }
+        : {}),
+      ...(entryResult ? { result: entryResult } : {}),
+      ...(entryError ? { error: entryError } : {}),
+    };
+
+    try {
+      await saveHistoryEntry(entry);
+      setHistoryError("");
+    } catch {
+      setHistoryError(
+        "Результат показан, но сохранить его в историю не удалось.",
+      );
+    }
+
+    setHistory((currentHistory) => [entry, ...currentHistory]);
+    setSelectedHistoryId(entry.id);
+  };
+
+  const changeMode = (nextMode: AnalysisMode) => {
     setMode(nextMode);
     setError("");
     setResult(null);
   };
 
+  const removeAllHistory = async () => {
+    if (
+      !window.confirm(
+        "Удалить всю историю запросов, ответов и сохранённых фотографий?",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await clearHistory();
+      setHistory([]);
+      setSelectedHistoryId("");
+      setHistoryError("");
+    } catch {
+      setHistoryError("Не удалось очистить локальную историю.");
+    }
+  };
+
   return (
-    <section className="analyzer-card" aria-label="Анализ блюда">
-      <div className="mode-tabs" role="tablist" aria-label="Источник данных">
+    <div className="analyzer-stack">
+      <section
+        className="analyzer-card"
+        id="calculator"
+        aria-label="Анализ блюда"
+      >
+        <div className="card-toolbar">
+          <strong>Новый расчёт</strong>
+        </div>
+
+        <div className="mode-tabs" role="tablist" aria-label="Источник данных">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "photo"}
+            className={mode === "photo" ? "active" : ""}
+            onClick={() => changeMode("photo")}
+          >
+            <CameraIcon />
+            По фото
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "text"}
+            className={mode === "text" ? "active" : ""}
+            onClick={() => changeMode("text")}
+          >
+            <TextIcon />
+            По описанию
+          </button>
+        </div>
+
+        <form onSubmit={submit}>
+          {mode === "photo" ? (
+            <div className="photo-section">
+              <input
+                ref={fileInputRef}
+                className="visually-hidden"
+                id="meal-photo"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                onChange={choosePhoto}
+              />
+              <div
+                className={`dropzone ${previewUrl ? "with-preview" : ""} ${
+                  isDragging ? "dragging" : ""
+                }`}
+                onDragEnter={(event) => {
+                  event.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={dropPhoto}
+              >
+                {previewUrl ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={previewUrl} alt="Выбранное блюдо" />
+                    <div className="preview-overlay">
+                      <span>{photo?.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        Заменить
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <button
+                    className="dropzone-button"
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <span className="upload-icon" aria-hidden="true">
+                      <UploadIcon />
+                    </span>
+                    <strong>Добавьте фото тарелки</strong>
+                    <span>Нажмите или перетащите сюда · до 10 МБ</span>
+                    <small>JPG, PNG, WebP, HEIC</small>
+                  </button>
+                )}
+              </div>
+              <label className="field-label" htmlFor="photo-description">
+                Уточнение <span>необязательно</span>
+              </label>
+              <textarea
+                id="photo-description"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Например: каша на молоке без сахара, тарелка 24 см"
+                rows={2}
+                maxLength={2_000}
+              />
+            </div>
+          ) : (
+            <div className="text-section">
+              <label className="field-label" htmlFor="meal-description">
+                Что у вас на тарелке?
+              </label>
+              <textarea
+                id="meal-description"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Например: 200 г гречки, куриная котлета 90 г и салат без заправки"
+                rows={5}
+                maxLength={2_000}
+                autoFocus
+              />
+              <div className="examples">
+                <span>Чем точнее вес и состав, тем полезнее оценка.</span>
+              </div>
+            </div>
+          )}
+
+          {error ? (
+            <div className="error-message" role="alert">
+              <span aria-hidden="true">!</span>
+              {error}
+            </div>
+          ) : null}
+
+          <button
+            className="analyze-button"
+            type="submit"
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <span className="spinner" aria-hidden="true" />
+                Gemini анализирует…
+              </>
+            ) : (
+              <>
+                <SparkIcon />
+                Рассчитать ХЕ
+              </>
+            )}
+          </button>
+        </form>
+
+        {result ? <ResultView result={result} /> : <EmptyResult />}
+        {historyError ? (
+          <p className="history-storage-error" role="status">
+            {historyError}
+          </p>
+        ) : null}
+      </section>
+
+      <section className="analyzer-card history-card" aria-label="История анализов">
+        <HistoryView
+          entries={history}
+          selectedId={selectedHistoryId}
+          isLoading={isHistoryLoading}
+          error={historyError}
+          onClear={removeAllHistory}
+          onSelect={setSelectedHistoryId}
+          onToAnalyzer={() =>
+            document
+              .getElementById("calculator")
+              ?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+        />
+      </section>
+    </div>
+  );
+}
+
+function HistoryView({
+  entries,
+  selectedId,
+  isLoading,
+  error,
+  onClear,
+  onSelect,
+  onToAnalyzer,
+}: {
+  entries: AnalysisHistoryEntry[];
+  selectedId: string;
+  isLoading: boolean;
+  error: string;
+  onClear: () => void;
+  onSelect: (id: string) => void;
+  onToAnalyzer: () => void;
+}) {
+  const selectedEntry =
+    entries.find((entry) => entry.id === selectedId) ?? entries[0];
+
+  return (
+    <>
+      <div className="history-header">
+        <div>
+          <span>{entries.length} сохранено</span>
+          <h2>История</h2>
+        </div>
         <button
+          className="clear-history-button"
           type="button"
-          role="tab"
-          aria-selected={mode === "photo"}
-          className={mode === "photo" ? "active" : ""}
-          onClick={() => changeMode("photo")}
+          onClick={onClear}
+          disabled={entries.length === 0}
         >
-          <CameraIcon />
-          По фото
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === "text"}
-          className={mode === "text" ? "active" : ""}
-          onClick={() => changeMode("text")}
-        >
-          <TextIcon />
-          По описанию
+          Очистить
         </button>
       </div>
 
-      <form onSubmit={submit}>
-        {mode === "photo" ? (
-          <div className="photo-section">
-            <input
-              ref={fileInputRef}
-              className="visually-hidden"
-              id="meal-photo"
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-              onChange={choosePhoto}
-            />
-            <div
-              className={`dropzone ${previewUrl ? "with-preview" : ""} ${
-                isDragging ? "dragging" : ""
-              }`}
-              onDragEnter={(event) => {
-                event.preventDefault();
-                setIsDragging(true);
-              }}
-              onDragOver={(event) => event.preventDefault()}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={dropPhoto}
-            >
-              {previewUrl ? (
-                <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={previewUrl} alt="Выбранное блюдо" />
-                  <div className="preview-overlay">
-                    <span>{photo?.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      Заменить
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <button
-                  className="dropzone-button"
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
+      {error ? (
+        <p className="history-storage-error" role="status">
+          {error}
+        </p>
+      ) : null}
+
+      {isLoading ? (
+        <div className="history-empty">
+          <span className="spinner dark-spinner" aria-hidden="true" />
+          Загружаем историю…
+        </div>
+      ) : entries.length === 0 ? (
+        <div className="history-empty">
+          <HistoryIcon />
+          <strong>История пока пуста</strong>
+          <p>После первого расчёта здесь сохранятся запрос и ответ.</p>
+          <button type="button" onClick={onToAnalyzer}>
+            Сделать расчёт
+          </button>
+        </div>
+      ) : (
+        <div className="history-layout">
+          <div className="history-list" aria-label="Прошлые запросы">
+            {entries.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={entry.id === selectedEntry?.id ? "active" : ""}
+                aria-pressed={entry.id === selectedEntry?.id}
+                onClick={() => onSelect(entry.id)}
+              >
+                <span className="history-list-icon" aria-hidden="true">
+                  {entry.mode === "photo" ? <CameraIcon /> : <TextIcon />}
+                </span>
+                <span className="history-list-copy">
+                  <strong>{getHistoryTitle(entry)}</strong>
+                  <small>{formatHistoryDate(entry.createdAt)}</small>
+                </span>
+                <span
+                  className={`history-list-value ${
+                    entry.error ? "history-list-error" : ""
+                  }`}
                 >
-                  <span className="upload-icon" aria-hidden="true">
-                    <UploadIcon />
-                  </span>
-                  <strong>Добавьте фото тарелки</strong>
-                  <span>Нажмите или перетащите сюда · до 10 МБ</span>
-                  <small>JPG, PNG, WebP, HEIC</small>
-                </button>
-              )}
-            </div>
-            <label className="field-label" htmlFor="photo-description">
-              Уточнение <span>необязательно</span>
-            </label>
-            <textarea
-              id="photo-description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Например: каша на молоке без сахара, тарелка 24 см"
-              rows={2}
-              maxLength={2_000}
-            />
+                  {entry.result
+                    ? `${formatNumber(entry.result.totalBreadUnits)} ХЕ`
+                    : "Ошибка"}
+                </span>
+              </button>
+            ))}
           </div>
+          {selectedEntry ? (
+            <HistoryDetail key={selectedEntry.id} entry={selectedEntry} />
+          ) : null}
+        </div>
+      )}
+    </>
+  );
+}
+
+function HistoryDetail({ entry }: { entry: AnalysisHistoryEntry }) {
+  const [photoUrl] = useState(() =>
+    entry.photo ? URL.createObjectURL(entry.photo) : "",
+  );
+
+  useEffect(() => {
+    return () => {
+      if (photoUrl) URL.revokeObjectURL(photoUrl);
+    };
+  }, [photoUrl]);
+
+  return (
+    <article className="history-detail">
+      <div className="history-request">
+        <div className="history-detail-heading">
+          <div>
+            <span>Запрос</span>
+            <strong>{formatHistoryDate(entry.createdAt, true)}</strong>
+          </div>
+          <span className="history-mode">
+            {entry.mode === "photo" ? "По фото" : "По описанию"}
+          </span>
+        </div>
+
+        {photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            className="history-photo"
+            src={photoUrl}
+            alt={entry.photoName ? `Блюдо: ${entry.photoName}` : "Блюдо из истории"}
+          />
+        ) : null}
+
+        {entry.description ? (
+          <p className="history-description">{entry.description}</p>
         ) : (
-          <div className="text-section">
-            <label className="field-label" htmlFor="meal-description">
-              Что у вас на тарелке?
-            </label>
-            <textarea
-              id="meal-description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Например: 200 г гречки, куриная котлета 90 г и салат без заправки"
-              rows={5}
-              maxLength={2_000}
-              autoFocus
-            />
-            <div className="examples">
-              <span>Чем точнее вес и состав, тем полезнее оценка.</span>
+          <p className="history-description history-description-muted">
+            Запрос отправлен без текстового уточнения.
+          </p>
+        )}
+      </div>
+
+      <div className="history-answer">
+        <span className="history-section-label">Ответ</span>
+        {entry.result ? (
+          <ResultView result={entry.result} />
+        ) : (
+          <div className="history-error-answer" role="status">
+            <span aria-hidden="true">!</span>
+            <div>
+              <strong>Расчёт не выполнен</strong>
+              <p>{entry.error ?? "Ответ не был получен."}</p>
             </div>
           </div>
         )}
-
-        {error ? (
-          <div className="error-message" role="alert">
-            <span aria-hidden="true">!</span>
-            {error}
-          </div>
-        ) : null}
-
-        <button
-          className="analyze-button"
-          type="submit"
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <>
-              <span className="spinner" aria-hidden="true" />
-              Gemini анализирует…
-            </>
-          ) : (
-            <>
-              <SparkIcon />
-              Рассчитать ХЕ
-            </>
-          )}
-        </button>
-      </form>
-
-      {result ? <ResultView result={result} /> : <EmptyResult />}
-    </section>
+      </div>
+    </article>
   );
 }
 
@@ -358,6 +648,27 @@ function formatNumber(value: number) {
   }).format(value);
 }
 
+function getHistoryTitle(entry: AnalysisHistoryEntry) {
+  const description = entry.description.trim();
+  if (description) return description;
+  return entry.photoName || "Фотография блюда";
+}
+
+function formatHistoryDate(value: string, includeYear = false) {
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "short",
+    ...(includeYear ? { year: "numeric" as const } : {}),
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function createHistoryId() {
+  return globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 function CameraIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -387,6 +698,14 @@ function SparkIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M12 2.8c.6 4.8 3.2 7.4 8 8-4.8.6-7.4 3.2-8 8-.6-4.8-3.2-7.4-8-8 4.8-.6 7.4-3.2 8-8Z" />
+    </svg>
+  );
+}
+
+function HistoryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6M4 4v4.6h4.6M12 7.5V12l3 1.8" />
     </svg>
   );
 }
