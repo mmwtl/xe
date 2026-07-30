@@ -882,6 +882,36 @@
 }
 
 @media (max-width: 700px) {
+  .admin-login-shell {
+    min-height: 100dvh;
+    justify-content: flex-start;
+    padding-top: max(18px, env(safe-area-inset-top));
+    padding-bottom: max(22px, env(safe-area-inset-bottom));
+  }
+
+  .admin-login-brand {
+    margin-bottom: 18px;
+  }
+
+  .admin-login-panel {
+    padding: 24px 22px;
+    border-radius: 20px;
+    box-shadow: 7px 9px 0 var(--admin-ink);
+  }
+
+  .admin-login-panel h1 {
+    font-size: clamp(37px, 12vw, 46px);
+  }
+
+  .admin-login-panel > p {
+    margin: 14px 0 20px;
+    font-size: 12px;
+  }
+
+  .admin-login-footnote {
+    margin-top: 18px;
+  }
+
   .admin-topbar {
     position: sticky;
     top: 0;
