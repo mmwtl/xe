@@ -16,7 +16,13 @@ export default function Home() {
           <span aria-hidden="true" />
           1 ХЕ = 12 г углеводов
         </div>
-        <InstallButton />
+        <div className="topbar-actions">
+          <Link className="admin-nav-button" href="/admin">
+            <LockIcon />
+            Админ
+          </Link>
+          <InstallButton />
+        </div>
       </header>
 
       <section className="workspace">
@@ -51,5 +57,14 @@ export default function Home() {
         </span>
       </footer>
     </main>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="5" y="10" width="14" height="10" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+    </svg>
   );
 }

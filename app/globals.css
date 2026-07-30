@@ -113,9 +113,50 @@ label {
   box-shadow: 0 0 0 4px rgba(111, 169, 37, 0.12);
 }
 
+.topbar-actions {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.admin-nav-button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 253, 248, 0.72);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 850;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.admin-nav-button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.admin-nav-button:hover {
+  border-color: var(--ink);
+  background: white;
+  transform: translateY(-1px);
+}
+
 .pwa-state,
 .installed-state {
-  justify-self: end;
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
@@ -126,7 +167,6 @@ label {
 }
 
 .install-button {
-  justify-self: end;
   min-height: 38px;
   padding: 0 16px;
   border: 1px solid var(--ink);
@@ -1155,14 +1195,34 @@ textarea:focus {
     grid-template-columns: 1fr auto;
   }
 
+  .topbar-actions {
+    gap: 6px;
+  }
+
+  .admin-nav-button {
+    min-height: 36px;
+    gap: 5px;
+    padding: 0 9px;
+    border-radius: 10px;
+    font-size: 10px;
+  }
+
   .xe-rule {
     display: none;
   }
 
   .pwa-state {
-    max-width: 130px;
+    max-width: 92px;
     font-size: 9px;
+    line-height: 1.2;
     text-align: right;
+  }
+
+  .install-button {
+    min-height: 36px;
+    padding: 0 10px;
+    border-radius: 10px;
+    font-size: 10px;
   }
 
   .workspace {
