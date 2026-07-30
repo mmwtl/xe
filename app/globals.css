@@ -209,6 +209,14 @@ h1 em::after {
   line-height: 1.55;
 }
 
+.data-note {
+  max-width: 500px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
 .analyzer-stack {
   min-width: 0;
   display: grid;
@@ -1098,6 +1106,12 @@ textarea:focus {
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.app-footer a {
+  color: inherit;
+  font-weight: 850;
+  text-underline-offset: 3px;
 }
 
 .visually-hidden {

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Analyzer } from "./components/analyzer";
 import { InstallButton } from "./components/install-button";
 
@@ -33,14 +34,21 @@ export default function Home() {
             Оценка приблизительная. Не используйте результат как единственное
             основание для расчёта дозировки инсулина.
           </p>
+          <p className="data-note">
+            Запрос, технические данные и уменьшенное превью фотографий могут
+            сохраняться в закрытом журнале сервиса. Личная история остаётся на
+            этом устройстве.
+          </p>
         </div>
 
         <Analyzer />
       </section>
 
       <footer className="app-footer">
-        <span>Gemini API · история хранится на устройстве</span>
-        <span>PWA для Android и iOS</span>
+        <span>Gemini API · личная история хранится на устройстве</span>
+        <span>
+          PWA для Android и iOS · <Link href="/admin">Админ</Link>
+        </span>
       </footer>
     </main>
   );
