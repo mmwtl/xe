@@ -3,6 +3,7 @@
 import {
   ChangeEvent,
   FormEvent,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -15,6 +16,7 @@ import {
   type AnalysisMode,
 } from "@/lib/history";
 import type { ApiError, MealAnalysis } from "@/lib/types";
+import { useVoiceInput } from "@/lib/use-voice-input";
 
 const MAX_PHOTOS = 3;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -46,6 +48,22 @@ export function Analyzer() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const previewUrlsRef = useRef(new Set<string>());
+
+  const handleVoiceTranscript = useCallback((transcript: string) => {
+    setDescription((currentDescription) =>
+      [currentDescription.trim(), transcript.trim()]
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 2_000),
+    );
+    setError("");
+    setResult(null);
+  }, []);
+  const {
+    error: voiceError,
+    isListening,
+    toggle: toggleVoiceInput,
+  } = useVoiceInput(handleVoiceTranscript);
 
   useEffect(() => {
     let isMounted = true;
@@ -282,14 +300,41 @@ export function Analyzer() {
             <label className="visually-hidden" htmlFor="meal-description">
               Описание блюда
             </label>
-            <textarea
-              id="meal-description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Опишите блюдо или уточните состав"
-              rows={3}
-              maxLength={2_000}
-            />
+            <div className="description-input">
+              <textarea
+                id="meal-description"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Опишите блюдо или уточните состав"
+                rows={3}
+                maxLength={2_000}
+              />
+              <button
+                className={`voice-button ${isListening ? "is-listening" : ""}`}
+                type="button"
+                disabled={isLoading}
+                aria-label={
+                  isListening
+                    ? "Остановить голосовой ввод"
+                    : "Ввести описание голосом"
+                }
+                aria-pressed={isListening}
+                title={
+                  isListening
+                    ? "Остановить голосовой ввод"
+                    : "Ввести описание голосом"
+                }
+                onClick={() => {
+                  setError("");
+                  toggleVoiceInput();
+                }}
+              >
+                <MicrophoneIcon />
+                <span className="visually-hidden">
+                  {isListening ? "Слушаю…" : "Ввести голосом"}
+                </span>
+              </button>
+            </div>
 
             <input
               ref={cameraInputRef}
@@ -367,17 +412,17 @@ export function Analyzer() {
             </div>
           </div>
 
-          {error ? (
+          {error || voiceError ? (
             <div className="error-message" role="alert">
               <span aria-hidden="true">!</span>
-              {error}
+              {error || voiceError}
             </div>
           ) : null}
 
           <button
             className="analyze-button"
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || isListening}
           >
             {isLoading ? (
               <>
@@ -727,6 +772,15 @@ function CameraIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M8.5 5.5 10 3.7h4l1.5 1.8H19A2.5 2.5 0 0 1 21.5 8v9A2.5 2.5 0 0 1 19 19.5H5A2.5 2.5 0 0 1 2.5 17V8A2.5 2.5 0 0 1 5 5.5h3.5Z" />
       <circle cx="12" cy="12.5" r="4" />
+    </svg>
+  );
+}
+
+function MicrophoneIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="8" y="3" width="8" height="12" rx="4" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3M8.5 21h7" />
     </svg>
   );
 }
